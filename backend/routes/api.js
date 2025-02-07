@@ -6,7 +6,9 @@ router.post('/contact-info-user', async (req, res) => {
     try {
         let user = new User({
             name: req.body.name,
+            phoneNumber: req.body.phoneNumber,
             email: req.body.email,
+            subject: req.body.subject,
             message: req.body.message
         });
 
