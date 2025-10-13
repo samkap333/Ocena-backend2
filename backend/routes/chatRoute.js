@@ -1,20 +1,49 @@
-// routes/chatRoute.js - AI Chat Route with OpenRouter
+// routes/chatRoute.js - AI Chat with MongoDB Integration
 
 const express = require('express');
 const router = express.Router();
+const { v4: uuidv4 } = require('uuid');
 
-// Health check endpoint for chat service
+// Import configurations and models
+const Chat = require('../models/chat');
+const { COMPANY_KNOWLEDGE, getRelevantContext, isRelevantQuery } = require('../config/knowledgeBase');
+const { AI_CONFIG, formatLinksInResponse, callAI } = require('../config/aiConfig');
+
+// =============================================
+// UTILITY FUNCTIONS
+// =============================================
+
+// Generate or retrieve session ID
+function getSessionId(req) {
+  // Check if session ID exists in headers or generate new one
+  return req.headers['x-session-id'] || req.body.sessionId || uuidv4();
+}
+
+// Extract user metadata
+function getUserMetadata(req) {
+  return {
+    userIP: req.ip || req.connection.remoteAddress,
+    userAgent: req.headers['user-agent'] || 'Unknown'
+  };
+}
+
+// =============================================
+// ROUTES
+// =============================================
+
+// Health check endpoint
 router.get('/api/chat/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    message: 'Chat service is running',
-    provider: 'OpenRouter',
-    model: 'openai/gpt-4o',
+    message: 'Ocena AI Chat service is running',
+    provider: AI_CONFIG.provider,
+    model: AI_CONFIG.model,
+    mode: 'Domain-Specific RAG with MongoDB',
     timestamp: new Date().toISOString()
   });
 });
 
-// Chat endpoint with OpenRouter API
+// Main chat endpoint
 router.post('/api/chat', async (req, res) => {
   try {
     const { messages } = req.body;
@@ -34,102 +63,118 @@ router.post('/api/chat', async (req, res) => {
       });
     }
 
-    // Get API key from environment variables
+    // Get session ID and user metadata
+    const sessionId = getSessionId(req);
+    const userMetadata = getUserMetadata(req);
+
+    // Extract user query
+    const lastUserMessage = messages[messages.length - 1];
+    const userQuery = lastUserMessage.content || '';
+
+    // Check for greetings
+    const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening|greetings)$/i.test(userQuery.trim());
+    
+    // Check relevance (but allow greetings)
+    if (!isRelevantQuery(userQuery) && !isGreeting) {
+      const fallbackMessage = "I'm here to help with questions about Ocena's services, projects, courses, and more. What would you like to know?";
+      
+      // Save filtered interaction
+      await Chat.saveInteraction(
+        sessionId,
+        userQuery,
+        fallbackMessage,
+        {
+          ...userMetadata,
+          model: AI_CONFIG.model,
+          filtered: true,
+          tokensUsed: 0
+        }
+      ).catch(err => console.error('Failed to save filtered chat:', err));
+
+      return res.json({
+        success: true,
+        message: fallbackMessage,
+        sessionId: sessionId,
+        timestamp: new Date().toISOString(),
+        filtered: true
+      });
+    }
+
+    // Get API key
     const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
     if (!OPENROUTER_API_KEY) {
-      console.error('OPENROUTER_API_KEY not found in environment variables');
+      console.error('OPENROUTER_API_KEY not found');
       return res.status(500).json({ 
         success: false,
         error: 'Server configuration error. Please contact support.' 
       });
     }
 
-    // Prepare messages for OpenRouter (add system message)
+    // Get relevant context from knowledge base
+    const relevantContext = getRelevantContext(userQuery, COMPANY_KNOWLEDGE);
+
+    // Build system prompt
+    const systemPrompt = AI_CONFIG.systemPromptTemplate(relevantContext);
+
+    // Format messages for AI
     const formattedMessages = [
-      {
-        role: 'system',
-        content: 'You are a professional AI assistant for Ocena, a web development and IT training company. Provide helpful, accurate, and friendly responses about web development, blockchain, courses, and technology services. Keep responses concise and professional.'
-      },
+      { role: 'system', content: systemPrompt },
       ...messages
     ];
 
-    // Call OpenRouter API
-    const response = await fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': process.env.APP_URL || 'http://localhost:3000',
-          'X-Title': 'Ocena AI Chat'
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-4o',
-          messages: formattedMessages,
-          temperature: 0.7,
-          max_tokens: 512,
-          top_p: 0.95
-        })
-      }
+    // Call AI service
+    const aiResult = await callAI(
+      formattedMessages, 
+      OPENROUTER_API_KEY,
+      process.env.APP_URL || 'http://localhost:3000'
     );
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error('OpenRouter API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
+    // Handle AI errors
+    if (!aiResult.success) {
+      const errorResponses = {
+        'INVALID_API_KEY': { status: 500, message: 'Invalid API configuration.' },
+        'RATE_LIMIT': { status: 429, message: 'Too many requests. Please wait a moment.' },
+        'INSUFFICIENT_CREDITS': { status: 500, message: 'Service temporarily unavailable.' },
+        'NO_RESPONSE': { status: 500, message: 'Failed to generate response.' },
+        'AI_SERVICE_ERROR': { status: 500, message: 'AI service temporarily unavailable.' }
+      };
 
-      if (response.status === 401) {
-        return res.status(500).json({ 
-          success: false,
-          error: 'Invalid API configuration. Please contact support.' 
-        });
-      } else if (response.status === 429) {
-        return res.status(429).json({ 
-          success: false,
-          error: 'Too many requests. Please wait a moment and try again.' 
-        });
-      } else if (response.status === 402) {
-        return res.status(500).json({ 
-          success: false,
-          error: 'Service temporarily unavailable. Please try again.' 
-        });
-      } else {
-        return res.status(500).json({ 
-          success: false,
-          error: 'AI service temporarily unavailable. Please try again.' 
-        });
-      }
-    }
+      const errorResponse = errorResponses[aiResult.error] || errorResponses['AI_SERVICE_ERROR'];
 
-    const data = await response.json();
-    
-    // OpenRouter follows OpenAI's response format
-    let aiResponse = '';
-    
-    if (data.choices && data.choices.length > 0) {
-      aiResponse = data.choices[0].message?.content || '';
-    }
-
-    // Clean up the response
-    aiResponse = aiResponse.trim();
-
-    if (!aiResponse) {
-      return res.status(500).json({ 
+      return res.status(errorResponse.status).json({ 
         success: false,
-        error: 'Failed to generate response. Please try again.' 
+        error: errorResponse.message 
       });
     }
 
-    // Send successful response
+    // Format links in AI response
+    let aiResponse = formatLinksInResponse(aiResult.message);
+
+    // Save chat interaction to MongoDB
+    try {
+      await Chat.saveInteraction(
+        sessionId,
+        userQuery,
+        aiResponse,
+        {
+          ...userMetadata,
+          model: aiResult.model,
+          filtered: false,
+          tokensUsed: aiResult.tokensUsed
+        }
+      );
+    } catch (dbError) {
+      console.error('Failed to save chat to MongoDB:', dbError);
+      // Don't fail the request if DB save fails
+    }
+
+    // Send response
     res.json({ 
       success: true,
       message: aiResponse,
-      model: data.model || 'openai/gpt-4o',
+      sessionId: sessionId,
+      model: aiResult.model,
       timestamp: new Date().toISOString()
     });
 
@@ -137,8 +182,132 @@ router.post('/api/chat', async (req, res) => {
     console.error('Chat Route Error:', error);
     res.status(500).json({ 
       success: false,
-      error: 'An unexpected error occurred. Please try again later.',
-      details: process.env.NODE_ENV === 'production' ? error.message : undefined
+      error: 'An unexpected error occurred.',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Get chat history for a session
+router.get('/api/chat/history/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    const chatHistory = await Chat.getHistory(sessionId, limit);
+
+    if (!chatHistory) {
+      return res.status(404).json({
+        success: false,
+        error: 'No chat history found for this session.'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: chatHistory
+    });
+
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch chat history.'
+    });
+  }
+});
+
+// Admin: Get all chats (paginated)
+router.get('/api/chat/admin/all', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const result = await Chat.getAllChats(page, limit);
+
+    res.json({
+      success: true,
+      data: result.chats,
+      pagination: result.pagination
+    });
+
+  } catch (error) {
+    console.error('Error fetching all chats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch chats.'
+    });
+  }
+});
+
+// Admin: Search chats
+router.get('/api/chat/admin/search', async (req, res) => {
+  try {
+    const query = req.query.q;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        error: 'Search query is required.'
+      });
+    }
+
+    const result = await Chat.searchChats(query, page, limit);
+
+    res.json({
+      success: true,
+      data: result.chats,
+      pagination: result.pagination,
+      query: query
+    });
+
+  } catch (error) {
+    console.error('Error searching chats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to search chats.'
+    });
+  }
+});
+
+// Admin: Get chat statistics
+router.get('/api/chat/admin/stats', async (req, res) => {
+  try {
+    const totalChats = await Chat.countDocuments();
+    const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentChats = await Chat.countDocuments({
+      createdAt: { $gte: last24Hours }
+    });
+
+    // Get most active sessions
+    const activeSessions = await Chat.aggregate([
+      {
+        $project: {
+          sessionId: 1,
+          messageCount: { $size: '$messages' },
+          lastActivity: '$updatedAt'
+        }
+      },
+      { $sort: { messageCount: -1 } },
+      { $limit: 10 }
+    ]);
+
+    res.json({
+      success: true,
+      stats: {
+        totalChats,
+        recentChats,
+        activeSessions
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching chat stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch statistics.'
     });
   }
 });
