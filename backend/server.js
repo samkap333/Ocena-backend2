@@ -7,9 +7,9 @@ require('dotenv').config();
 require('./config/database');
 
 // Import routes
-const contactRoutes = require('./routes/api'); // for contact-us details route
-const emailRoutes = require('./routes/emailRoute'); // for newsletter route
-
+const contactRoutes = require('./routes/api'); 
+const emailRoutes = require('./routes/emailRoute'); 
+const chatRoutes = require('./routes/chatRoute')
 // Import middleware
 const middleware = require('./middleware');
 
@@ -19,8 +19,9 @@ const server = express();
 middleware(server);
 
 // Routes
-server.use('/', contactRoutes);  //using contactRoute here
-server.use('/', emailRoutes);   //using emailRoute 
+server.use('/', contactRoutes);  
+server.use('/', emailRoutes);
+server.use('/', chatRoutes);
 
 // Start the server
 server.listen(8000, () => {
