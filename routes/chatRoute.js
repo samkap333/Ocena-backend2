@@ -312,4 +312,20 @@ router.get('/api/chat/admin/stats', async (req, res) => {
   }
 });
 
+// ── Wake-up endpoint ──────────────────────────────────────────────────────
+// In-memory flag — resets only when the server process restarts (i.e. cold start).
+// First user to hit this after a cold start  → isAwake=false → sets true → { awake: false }
+// Every user after that (server already warm) → isAwake=true  → { awake: true }
+// The frontend stores { awake: true } in localStorage so subsequent users
+// never even send the request.
+let isAwake = false;
+
+router.get('/api/wake', (req, res) => {
+  if (isAwake) {
+    return res.json({ awake: true });   // server was already warm — skip on client
+  }
+  isAwake = true;                       // mark warm for all future requests
+  return res.json({ awake: false });    // first user woke us up
+});
+
 module.exports = router;
