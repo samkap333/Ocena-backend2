@@ -1,15 +1,13 @@
 const mongoose = require('mongoose');
 
-// Log the Mongo URI to ensure it's being loaded correctly
-console.log('Mongo URI:', process.env.MONGO_URI);
+const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/ocena_crm';
 
-// Connect to MongoDB using the URI from the .env file
-mongoose.connect(process.env.MONGO_URI)
+mongoose.connect(mongoUri)
     .then(() => {
-        console.log("Connected to MongoDB Atlas");
+        console.log("Connected to MongoDB");
     })
     .catch(err => {
-        console.error("Error connecting to MongoDB Atlas:", err);
+        console.error("Error connecting to MongoDB:", err);
     });
 
 module.exports = mongoose;
