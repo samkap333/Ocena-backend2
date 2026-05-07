@@ -13,6 +13,11 @@ const campaignModels = {
 exports.crud = (type) => createCrudController(campaignModels[type]);
 
 async function updateCampaign(type, req, status) {
+  // Validate campaign ID
+  if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null') {
+    throw new Error('Invalid campaign ID');
+  }
+  
   return crmModels[campaignModels[type]].findOneAndUpdate(
     { _id: req.params.id, tenantId: req.tenantId },
     { status },
@@ -22,6 +27,11 @@ async function updateCampaign(type, req, status) {
 
 exports.send = (type) => async (req, res, next) => {
   try {
+    // Validate campaign ID
+    if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null') {
+      return res.status(400).json({ message: 'Invalid campaign ID' });
+    }
+
     const campaign = await crmModels[campaignModels[type]].findOne({
       _id: req.params.id,
       tenantId: req.tenantId,
@@ -141,6 +151,11 @@ exports.resume = (type) => async (req, res, next) => {
 
 exports.stats = (type) => async (req, res, next) => {
   try {
+    // Validate campaign ID
+    if (!req.params.id || req.params.id === 'undefined' || req.params.id === 'null') {
+      return res.status(400).json({ message: 'Invalid campaign ID' });
+    }
+
     const campaign = await crmModels[campaignModels[type]].findOne({ _id: req.params.id, tenantId: req.tenantId }).lean();
     if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
     return res.json(campaign.stats || {});

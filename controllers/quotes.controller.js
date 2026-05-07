@@ -166,11 +166,20 @@ exports.send = async (req, res, next) => {
       return res.status(404).json({ message: 'Quote not found' });
     }
 
-    const recipientEmail = quote.customerId?.email || quote.leadId?.email;
-    const recipientName = quote.customerId?.name || quote.leadId?.name;
+    // Allow manual email override from request body
+    let recipientEmail = req.body.email || quote.customerId?.email || quote.leadId?.email;
+    let recipientName = req.body.name || quote.customerId?.name || quote.leadId?.name || 'Valued Customer';
 
     if (!recipientEmail) {
-      return res.status(400).json({ message: 'No email address found for recipient' });
+      return res.status(400).json({ 
+        message: 'No email address found for recipient. Please provide an email address or link this quote to a customer/lead with an email.',
+        details: {
+          hasCustomer: !!quote.customerId,
+          hasLead: !!quote.leadId,
+          customerEmail: quote.customerId?.email || null,
+          leadEmail: quote.leadId?.email || null,
+        }
+      });
     }
 
     // Send email

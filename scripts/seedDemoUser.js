@@ -38,7 +38,7 @@ async function seedDemoUser() {
         currency: 'USD',
       },
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
   );
 
   console.log(`Seeded CRM demo user: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);

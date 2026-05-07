@@ -5,18 +5,20 @@
  * Get API key from: https://app.brevo.com/settings/keys/api
  */
 
-const brevo = require('@getbrevo/brevo');
+const { BrevoClient } = require('@getbrevo/brevo');
 
 // Initialize Brevo API client
-let apiInstance = null;
+let brevoClient = null;
 
 function initializeBrevo() {
-  if (!apiInstance && process.env.BREVO_API_KEY) {
-    apiInstance = new brevo.TransactionalEmailsApi();
-    const apiKey = apiInstance.authentications['apiKey'];
-    apiKey.apiKey = process.env.BREVO_API_KEY;
+  if (!brevoClient && process.env.BREVO_API_KEY) {
+    brevoClient = new BrevoClient({
+      apiKey: process.env.BREVO_API_KEY,
+      timeout: 30000,
+      maxRetries: 2
+    });
   }
-  return apiInstance;
+  return brevoClient;
 }
 
 /**
@@ -30,32 +32,23 @@ function initializeBrevo() {
  */
 exports.sendEmail = async ({ to, subject, html, text, from }) => {
   try {
-    const api = initializeBrevo();
+    const client = initializeBrevo();
     
-    if (!api) {
+    if (!client) {
       console.error('⚠️  Brevo API not configured. Set BREVO_API_KEY in .env');
       throw new Error('Email service not configured');
     }
 
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    
-    sendSmtpEmail.sender = {
-      name: process.env.EMAIL_FROM_NAME || 'Ocena CRM',
-      email: from || process.env.EMAIL_FROM_EMAIL || 'noreply@ocena.com',
-    };
-    
-    sendSmtpEmail.to = [{ email: to }];
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = html;
-    
-    if (text) {
-      sendSmtpEmail.textContent = text;
-    } else {
-      // Strip HTML tags for text version
-      sendSmtpEmail.textContent = html.replace(/<[^>]*>/g, '');
-    }
-
-    const result = await api.sendTransacEmail(sendSmtpEmail);
+    const result = await client.transactionalEmails.sendTransacEmail({
+      subject,
+      htmlContent: html,
+      textContent: text || html.replace(/<[^>]*>/g, ''),
+      sender: {
+        name: process.env.EMAIL_FROM_NAME || 'Ocena CRM',
+        email: from || process.env.EMAIL_FROM_EMAIL || 'noreply@ocena.com',
+      },
+      to: [{ email: to }],
+    });
     
     console.log(`✅ Email sent to ${to}: ${result.messageId}`);
     
@@ -174,25 +167,22 @@ exports.sendTemplateEmail = async ({ to, template, data, subject }) => {
  */
 exports.sendBrevoTemplate = async ({ to, templateId, params }) => {
   try {
-    const api = initializeBrevo();
+    const client = initializeBrevo();
     
-    if (!api) {
+    if (!client) {
       console.error('⚠️  Brevo API not configured. Set BREVO_API_KEY in .env');
       throw new Error('Email service not configured');
     }
 
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    
-    sendSmtpEmail.sender = {
-      name: process.env.EMAIL_FROM_NAME || 'Ocena CRM',
-      email: process.env.EMAIL_FROM_EMAIL || 'noreply@ocena.com',
-    };
-    
-    sendSmtpEmail.to = [{ email: to }];
-    sendSmtpEmail.templateId = templateId;
-    sendSmtpEmail.params = params;
-
-    const result = await api.sendTransacEmail(sendSmtpEmail);
+    const result = await client.transactionalEmails.sendTransacEmail({
+      templateId,
+      params,
+      sender: {
+        name: process.env.EMAIL_FROM_NAME || 'Ocena CRM',
+        email: process.env.EMAIL_FROM_EMAIL || 'noreply@ocena.com',
+      },
+      to: [{ email: to }],
+    });
     
     console.log(`✅ Template email sent to ${to}: ${result.messageId}`);
     return result;
@@ -207,9 +197,9 @@ exports.sendBrevoTemplate = async ({ to, templateId, params }) => {
  */
 exports.verifyConnection = async () => {
   try {
-    const api = initializeBrevo();
+    const client = initializeBrevo();
     
-    if (!api) {
+    if (!client) {
       return {
         success: false,
         message: 'BREVO_API_KEY not set in environment variables',
@@ -217,11 +207,7 @@ exports.verifyConnection = async () => {
     }
 
     // Try to get account info to verify API key
-    const accountApi = new brevo.AccountApi();
-    const apiKey = accountApi.authentications['apiKey'];
-    apiKey.apiKey = process.env.BREVO_API_KEY;
-    
-    const account = await accountApi.getAccount();
+    const account = await client.account.getAccount();
     
     return {
       success: true,
