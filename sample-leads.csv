@@ -1,0 +1,11 @@
+name,email,phone,company,status,source,value,notes
+John Doe,john.doe@example.com,+1234567890,Acme Corporation,new,website,5000,Interested in enterprise plan
+Jane Smith,jane.smith@techcorp.com,+1234567891,Tech Corp,contacted,referral,10000,Follow up next week
+Bob Johnson,bob.j@startup.io,+1234567892,Startup Inc,qualified,linkedin,7500,Ready for demo
+Alice Williams,alice.w@bigco.com,+1234567893,Big Company,proposal,cold-call,15000,Sent proposal on Monday
+Charlie Brown,charlie@smallbiz.com,+1234567894,Small Business,negotiation,email,3000,Price negotiation in progress
+Diana Prince,diana@enterprise.com,+1234567895,Enterprise Ltd,new,trade-show,20000,Met at conference
+Eve Anderson,eve.a@consulting.com,+1234567896,Consulting Group,contacted,partner,8000,Warm lead from partner
+Frank Miller,frank.m@agency.com,+1234567897,Creative Agency,qualified,website,4500,Interested in basic plan
+Grace Lee,grace@ecommerce.com,+1234567898,E-commerce Co,new,google-ads,6000,Clicked on ad campaign
+Henry Davis,henry.d@manufacturing.com,+1234567899,Manufacturing Inc,contacted,referral,12000,Referred by existing client

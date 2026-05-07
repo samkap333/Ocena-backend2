@@ -1,11 +1,17 @@
-const createCrudController = require('../controllers/crudController');
-const crudRoutes = require('./crud.routes');
+const express = require('express');
+const invoicesController = require('../controllers/invoices.controller');
+const { authenticate } = require('../middleware/auth.middleware');
 
-const router = crudRoutes(createCrudController('Invoice'));
-router.post('/:id/send', (req, res) => res.json({ message: 'Invoice queued for email delivery' }));
-router.get('/:id/pdf', (req, res) => {
-  res.setHeader('Content-Type', 'application/pdf');
-  res.send(Buffer.from(''));
-});
+const router = express.Router();
+
+router.use(authenticate);
+
+router.get('/', invoicesController.list);
+router.post('/', invoicesController.create);
+router.get('/:id', invoicesController.get);
+router.patch('/:id', invoicesController.update);
+router.delete('/:id', invoicesController.remove);
+router.post('/:id/send', invoicesController.send);
+router.get('/:id/pdf', invoicesController.pdf);
 
 module.exports = router;

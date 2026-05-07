@@ -28,4 +28,6 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// Export both as default and named export for compatibility
 module.exports = authMiddleware;
+module.exports.authenticate = authMiddleware;

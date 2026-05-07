@@ -8,6 +8,7 @@ const {
   appendRow,
   ensureSheet,
 } = require('../config/googleSheets');
+const { CareerApplication } = require('../models/crm');
 
 // ─── Cloudinary config (reads from .env) ─────────────────────────────────────
 cloudinary.config({
@@ -75,7 +76,7 @@ router.post('/career-application', upload.single('resume'), async (req, res) => 
     }
 
     // ── Upload resume to Cloudinary ──────────────────────────────
-    let resumeLink = 'No resume uploaded';
+    let resumeLink = req.body.resumeLink || 'No resume uploaded';
 
     if (req.file) {
       const safeName = `${fullName.replace(/\s+/g, '_')}_${Date.now()}`;
@@ -102,6 +103,23 @@ router.post('/career-application', upload.single('resume'), async (req, res) => 
       expectedCTC       || '',
       resumeLink,                // Cloudinary URL — clickable in Sheets
     ]);
+
+    await CareerApplication.create({
+      fullName,
+      email,
+      phone: phone || '',
+      currentLocation: currentLocation || '',
+      linkedIn: linkedIn || '',
+      yearsOfExperience: yearsOfExperience || '',
+      expectedCTC: expectedCTC || '',
+      jobTitle,
+      department: department || '',
+      jobType: jobType || '',
+      jobLocation: jobLocation || '',
+      resumeLink,
+      appliedAt: new Date(),
+      source: 'website',
+    });
 
     return res.status(201).json({ message: 'Application submitted successfully.' });
   } catch (error) {

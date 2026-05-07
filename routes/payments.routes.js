@@ -1,14 +1,14 @@
-const createCrudController = require('../controllers/crudController');
-const crudRoutes = require('./crud.routes');
-const paymentService = require('../services/payment.service');
+const express = require('express');
+const paymentsController = require('../controllers/payments.controller');
+const { authenticate } = require('../middleware/auth.middleware');
 
-const router = crudRoutes(createCrudController('Payment'));
-router.post('/process', async (req, res, next) => {
-  try {
-    res.json(await paymentService.processPayment(req.body));
-  } catch (error) {
-    next(error);
-  }
-});
+const router = express.Router();
+
+router.use(authenticate);
+
+router.get('/', paymentsController.list);
+router.post('/', paymentsController.create);
+router.get('/:id', paymentsController.get);
+router.post('/process', paymentsController.process);
 
 module.exports = router;

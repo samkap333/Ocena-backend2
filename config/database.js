@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/ocena_crm';
+const mongoUri = process.env.MONGO_URI;
 
 mongoose.connect(mongoUri)
     .then(() => {

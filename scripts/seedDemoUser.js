@@ -7,7 +7,7 @@ const DEMO_EMAIL = 'demo@ocena.com';
 const DEMO_PASSWORD = 'demo123';
 
 async function seedDemoUser() {
-  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://localhost:27017/ocena_crm';
+  const mongoUri = process.env.MONGO_URI;
   await mongoose.connect(mongoUri);
 
   let tenant = await Tenant.findOne({ subdomain: 'demo' });

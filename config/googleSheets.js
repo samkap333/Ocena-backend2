@@ -1,4 +1,6 @@
 const { google } = require('googleapis');
+const fs = require('fs');
+const path = require('path');
 
 // Set in your .env
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
@@ -15,7 +17,14 @@ const EMAIL_SHEET   = 'EmailSubscribers';
 
 function getCredentials() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not set in .env');
+  if (!raw && process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && process.env.GOOGLE_PRIVATE_KEY) {
+    return {
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    };
+  }
+
+  if (!raw) throw new Error('Google service account credentials are not set in .env');
   try {
     const parsed = JSON.parse(raw);
     // Ensure private_key newlines are real newlines (some platforms escape them)
@@ -24,8 +33,62 @@ function getCredentials() {
     }
     return parsed;
   } catch (e) {
+    const parsedFromFile = readServiceAccountJsonFromEnvFile();
+    if (parsedFromFile) return parsedFromFile;
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: ' + e.message);
   }
+}
+
+function readServiceAccountJsonFromEnvFile() {
+  const envPath = path.resolve(__dirname, '..', '.env');
+  if (!fs.existsSync(envPath)) return null;
+
+  const envFile = fs.readFileSync(envPath, 'utf8');
+  const marker = 'GOOGLE_SERVICE_ACCOUNT_JSON=';
+  const start = envFile.indexOf(marker);
+  if (start === -1) return null;
+
+  const jsonStart = envFile.indexOf('{', start + marker.length);
+  if (jsonStart === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = jsonStart; index < envFile.length; index += 1) {
+    const char = envFile[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (char === '{') depth += 1;
+    if (char === '}') depth -= 1;
+
+    if (depth === 0) {
+      const rawJson = envFile.slice(jsonStart, index + 1);
+      const parsed = JSON.parse(rawJson);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+      }
+      return parsed;
+    }
+  }
+
+  return null;
 }
 
 async function getAuthClient() {
@@ -49,6 +112,16 @@ async function appendRow(sheetName, values) {
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [values] },
   });
+}
+
+async function getRows(sheetName) {
+  const authClient = await getAuthClient();
+  const sheets = google.sheets({ version: 'v4', auth: authClient });
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${sheetName}!A2:Z`,
+  });
+  return result.data.values || [];
 }
 
 async function ensureSheet(sheetName, headerRow) {
@@ -101,5 +174,6 @@ module.exports = {
   CAREER_HEADERS,
   EMAIL_HEADERS,
   appendRow,
+  getRows,
   ensureSheet,
 };

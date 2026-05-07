@@ -145,6 +145,121 @@ const notificationSchema = new Schema({
   read: { type: Boolean, default: false, index: true },
 }, { timestamps: { createdAt: true, updatedAt: false } });
 
+const customerSchema = new Schema({
+  type: { type: String, enum: ['individual', 'company'], default: 'individual' },
+  name: { type: String, required: true },
+  companyName: String,
+  email: { type: String, required: true },
+  phone: String,
+  alternatePhone: String,
+  ownerId: { type: objectId, ref: 'User' },
+  lifecycleStage: { type: String, enum: ['lead', 'prospect', 'customer', 'inactive'], default: 'customer' },
+  source: String,
+  tags: [String],
+  customFields: json,
+  billingAddress: {
+    street: String,
+    city: String,
+    state: String,
+    country: String,
+    zipCode: String,
+  },
+  shippingAddress: {
+    street: String,
+    city: String,
+    state: String,
+    country: String,
+    zipCode: String,
+  },
+  notes: String,
+  tenantId: { type: objectId, ref: 'Tenant', required: true, index: true },
+}, { timestamps: true });
+
+const dealSchema = new Schema({
+  title: { type: String, required: true },
+  customerId: { type: objectId, ref: 'Customer' },
+  leadId: { type: objectId, ref: 'Lead' },
+  stage: { type: String, default: 'prospecting', index: true },
+  value: { type: Number, default: 0 },
+  currency: { type: String, default: 'USD' },
+  probability: { type: Number, default: 0, min: 0, max: 100 },
+  expectedCloseDate: Date,
+  actualCloseDate: Date,
+  ownerId: { type: objectId, ref: 'User' },
+  products: [{ type: objectId, ref: 'Product' }],
+  notes: String,
+  lostReason: String,
+  tenantId: { type: objectId, ref: 'Tenant', required: true, index: true },
+}, { timestamps: true });
+
+const productSchema = new Schema({
+  name: { type: String, required: true },
+  sku: String,
+  description: String,
+  type: { type: String, enum: ['product', 'service', 'subscription'], default: 'product' },
+  category: String,
+  unitPrice: { type: Number, required: true, default: 0 },
+  taxRate: { type: Number, default: 0 },
+  currency: { type: String, default: 'USD' },
+  isActive: { type: Boolean, default: true },
+  stockQuantity: Number,
+  tenantId: { type: objectId, ref: 'Tenant', required: true, index: true },
+}, { timestamps: true });
+
+const quoteSchema = new Schema({
+  quoteNumber: { type: String, required: true },
+  customerId: { type: objectId, ref: 'Customer' },
+  leadId: { type: objectId, ref: 'Lead' },
+  dealId: { type: objectId, ref: 'Deal' },
+  items: { type: [json], default: [] },
+  subtotal: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
+  tax: { type: Number, default: 0 },
+  total: { type: Number, default: 0 },
+  currency: { type: String, default: 'USD' },
+  status: { type: String, default: 'draft', index: true },
+  validUntil: Date,
+  acceptedAt: Date,
+  rejectedAt: Date,
+  convertedToInvoiceAt: Date,
+  invoiceId: { type: objectId, ref: 'Invoice' },
+  notes: String,
+  terms: String,
+  pdfUrl: String,
+  tenantId: { type: objectId, ref: 'Tenant', required: true, index: true },
+}, { timestamps: true });
+
+quoteSchema.index({ tenantId: 1, quoteNumber: 1 }, { unique: true });
+
+const contactSubmissionSchema = new Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, lowercase: true, trim: true, index: true },
+  phoneNumber: String,
+  subject: String,
+  message: String,
+  submittedAt: { type: Date, default: Date.now, index: true },
+  source: { type: String, default: 'website' },
+  sourceRowKey: { type: String, unique: true, sparse: true },
+}, { timestamps: true });
+
+const careerApplicationSchema = new Schema({
+  fullName: { type: String, required: true, trim: true },
+  email: { type: String, required: true, lowercase: true, trim: true, index: true },
+  phone: String,
+  currentLocation: String,
+  linkedIn: String,
+  yearsOfExperience: String,
+  expectedCTC: String,
+  jobTitle: { type: String, required: true, index: true },
+  department: String,
+  jobType: String,
+  jobLocation: String,
+  resumeLink: String,
+  appliedAt: { type: Date, default: Date.now, index: true },
+  source: { type: String, default: 'website' },
+  sourceRowKey: { type: String, unique: true, sparse: true },
+}, { timestamps: true });
+
 module.exports = {
   Tenant: mongoose.models.Tenant || mongoose.model('Tenant', tenantSchema),
   User: mongoose.models.User || mongoose.model('User', userSchema),
@@ -161,4 +276,10 @@ module.exports = {
   Ticket: mongoose.models.Ticket || mongoose.model('Ticket', ticketSchema),
   TicketMessage: mongoose.models.TicketMessage || mongoose.model('TicketMessage', ticketMessageSchema),
   Notification: mongoose.models.Notification || mongoose.model('Notification', notificationSchema),
+  Customer: mongoose.models.Customer || mongoose.model('Customer', customerSchema),
+  Deal: mongoose.models.Deal || mongoose.model('Deal', dealSchema),
+  Product: mongoose.models.Product || mongoose.model('Product', productSchema),
+  Quote: mongoose.models.Quote || mongoose.model('Quote', quoteSchema),
+  ContactSubmission: mongoose.models.ContactSubmission || mongoose.model('ContactSubmission', contactSubmissionSchema),
+  CareerApplication: mongoose.models.CareerApplication || mongoose.model('CareerApplication', careerApplicationSchema),
 };

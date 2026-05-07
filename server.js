@@ -21,6 +21,11 @@ const integrationsRoutes = require('./routes/integrations.routes');
 const workflowsRoutes = require('./routes/workflows.routes');
 const ticketsRoutes = require('./routes/tickets.routes');
 const notificationsRoutes = require('./routes/notifications.routes');
+const customersRoutes = require('./routes/customers.routes');
+const productsRoutes = require('./routes/products.routes');
+const dealsRoutes = require('./routes/deals.routes');
+const quotesRoutes = require('./routes/quotes.routes');
+const submissionsRoutes = require('./routes/submissions.routes');
 
 // Import middleware
 const middleware = require('./middleware');
@@ -57,6 +62,11 @@ server.use('/api/v1/integrations', authMiddleware, tenantMiddleware, integration
 server.use('/api/v1/workflows', authMiddleware, tenantMiddleware, workflowsRoutes);
 server.use('/api/v1/tickets', authMiddleware, tenantMiddleware, ticketsRoutes);
 server.use('/api/v1/notifications', authMiddleware, tenantMiddleware, notificationsRoutes);
+server.use('/api/v1/customers', authMiddleware, tenantMiddleware, customersRoutes);
+server.use('/api/v1/products', authMiddleware, tenantMiddleware, productsRoutes);
+server.use('/api/v1/deals', authMiddleware, tenantMiddleware, dealsRoutes);
+server.use('/api/v1/quotes', authMiddleware, tenantMiddleware, quotesRoutes);
+server.use('/api/v1/submissions', authMiddleware, submissionsRoutes);
 
 server.use(errorHandler);
 

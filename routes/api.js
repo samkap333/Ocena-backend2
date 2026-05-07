@@ -6,6 +6,7 @@ const {
   appendRow,
   ensureSheet,
 } = require('../config/googleSheets');
+const { ContactSubmission } = require('../models/crm');
 
 // POST /contact-info-user  — saves to Google Sheets "Contact" tab (no MongoDB)
 router.post('/contact-info-user', async (req, res) => {
@@ -29,6 +30,16 @@ router.post('/contact-info-user', async (req, res) => {
       subject      || '',
       message      || '',
     ]);
+
+    await ContactSubmission.create({
+      name,
+      email,
+      phoneNumber: phoneNumber || '',
+      subject: subject || '',
+      message: message || '',
+      submittedAt: new Date(),
+      source: 'website',
+    });
 
     return res.status(201).json({ message: 'Contact information saved successfully' });
   } catch (error) {
