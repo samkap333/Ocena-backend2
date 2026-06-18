@@ -260,6 +260,28 @@ const careerApplicationSchema = new Schema({
   sourceRowKey: { type: String, unique: true, sparse: true },
 }, { timestamps: true });
 
+const employeeSchema = new Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String },
+  role: { type: String, required: true },
+  department: { type: String, required: true },
+  salary: { type: Number, required: true },
+  employeeId: { type: String, required: true, unique: true },
+  joiningDate: { type: Date, default: Date.now },
+  bankName: { type: String },
+  accountNumber: { type: String },
+  ifscCode: { type: String },
+  branchName: { type: String },
+  panNumber: { type: String },
+  paymentMode: { type: String, default: 'Bank Transfer' },
+  upiId: { type: String },
+  resetOtp: { type: String },
+  resetOtpExpires: { type: Date },
+  pendingInvite: { type: Boolean, default: true },
+  tenantId: { type: objectId, ref: 'Tenant', index: true }
+}, { timestamps: true });
+
 module.exports = {
   Tenant: mongoose.models.Tenant || mongoose.model('Tenant', tenantSchema),
   User: mongoose.models.User || mongoose.model('User', userSchema),
@@ -282,4 +304,5 @@ module.exports = {
   Quote: mongoose.models.Quote || mongoose.model('Quote', quoteSchema),
   ContactSubmission: mongoose.models.ContactSubmission || mongoose.model('ContactSubmission', contactSubmissionSchema),
   CareerApplication: mongoose.models.CareerApplication || mongoose.model('CareerApplication', careerApplicationSchema),
+  Employee: mongoose.models.Employee || mongoose.model('Employee', employeeSchema),
 };

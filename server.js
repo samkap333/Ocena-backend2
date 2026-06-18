@@ -26,6 +26,7 @@ const productsRoutes = require('./routes/products.routes');
 const dealsRoutes = require('./routes/deals.routes');
 const quotesRoutes = require('./routes/quotes.routes');
 const submissionsRoutes = require('./routes/submissions.routes');
+const employeeRoutes = require('./routes/employee.routes');
 
 // Import middleware
 const middleware = require('./middleware');
@@ -67,6 +68,7 @@ server.use('/api/v1/products', authMiddleware, tenantMiddleware, productsRoutes)
 server.use('/api/v1/deals', authMiddleware, tenantMiddleware, dealsRoutes);
 server.use('/api/v1/quotes', authMiddleware, tenantMiddleware, quotesRoutes);
 server.use('/api/v1/submissions', authMiddleware, submissionsRoutes);
+server.use('/api/v1/employees', employeeRoutes);
 
 server.use(errorHandler);
 
