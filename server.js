@@ -45,6 +45,14 @@ notificationService.attachSocket(io);
 middleware(server);
 server.use('/api/v1', rateLimitMiddleware);
 
+// Health check endpoint
+server.get('/health', (req, res) => {
+  res.status(200).json({ status: 'UP', message: 'Server is running', timestamp: new Date() });
+});
+server.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'UP', message: 'Server is running', timestamp: new Date() });
+});
+
 // Routes
 server.use('/', contactRoutes);
 server.use('/', emailRoutes);
