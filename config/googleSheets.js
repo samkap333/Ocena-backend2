@@ -42,6 +42,22 @@ function getCredentials() {
         const pos = parseInt(posMatch[1], 10);
         console.error('Context around error position:', JSON.stringify(raw.substring(Math.max(0, pos - 30), Math.min(raw.length, pos + 30))));
       }
+
+      // Robust fallback: Extract credentials via regex if JSON parsing fails
+      try {
+        const emailMatch = raw.match(/"client_email"\s*:\s*"([^"]+)"/);
+        const keyMatch = raw.match(/"private_key"\s*:\s*"([^"]+)"/s) || raw.match(/"private_key"\s*:\s*"([^"]+)"/);
+        if (emailMatch && keyMatch) {
+          const client_email = emailMatch[1];
+          let private_key = keyMatch[1];
+          // Convert \n or \\n into actual newlines, and remove escaping backslashes if present
+          private_key = private_key.replace(/\\n/g, '\n').replace(/\\\n/g, '\n').replace(/\\/g, '');
+          console.log('Successfully recovered credentials via regex fallback!');
+          return { client_email, private_key };
+        }
+      } catch (recoveryError) {
+        console.error('Regex credentials recovery failed:', recoveryError.message);
+      }
     }
     const parsedFromFile = readServiceAccountJsonFromEnvFile();
     if (parsedFromFile) return parsedFromFile;
