@@ -33,6 +33,16 @@ function getCredentials() {
     }
     return parsed;
   } catch (e) {
+    console.error('Error parsing GOOGLE_SERVICE_ACCOUNT_JSON from process.env:', e.message);
+    if (raw) {
+      console.error('raw env var length:', raw.length);
+      console.error('raw env var start:', raw.substring(0, 250));
+      const posMatch = e.message.match(/position (\d+)/);
+      if (posMatch) {
+        const pos = parseInt(posMatch[1], 10);
+        console.error('Context around error position:', JSON.stringify(raw.substring(Math.max(0, pos - 30), Math.min(raw.length, pos + 30))));
+      }
+    }
     const parsedFromFile = readServiceAccountJsonFromEnvFile();
     if (parsedFromFile) return parsedFromFile;
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON: ' + e.message);
