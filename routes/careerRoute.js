@@ -1,7 +1,8 @@
 const express    = require('express');
 const router     = express.Router();
 const multer     = require('multer');
-const cloudinary = require('cloudinary').v2;
+const path       = require('path');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const {
   CAREER_SHEET,
   CAREER_HEADERS,
@@ -10,11 +11,13 @@ const {
 } = require('../config/googleSheets');
 const { CareerApplication } = require('../models/crm');
 
-// ─── Cloudinary config (reads from .env) ─────────────────────────────────────
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key:    process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+// ─── AWS S3 config (reads from .env) ─────────────────────────────────────────
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
 });
 
 // ─── Multer — memory storage ──────────────────────────────────────────────────
@@ -33,24 +36,26 @@ const upload = multer({
   },
 });
 
-// ─── Upload buffer to Cloudinary ─────────────────────────────────────────────
-function uploadToCloudinary(buffer, fileName) {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        resource_type: 'raw',          // required for non-image files (PDF, DOCX)
-        folder: 'ocena_resumes',       // organise in a folder in your Cloudinary account
-        public_id: fileName,
-        use_filename: true,
-        unique_filename: true,
-      },
-      (error, result) => {
-        if (error) return reject(error);
-        resolve(result.secure_url);    // https://... link saved in the sheet
-      }
-    );
-    uploadStream.end(buffer);
+// ─── Upload buffer to AWS S3 ─────────────────────────────────────────────────
+async function uploadToS3(buffer, fileName, mimeType) {
+  const bucketName = process.env.AWS_BUCKET_NAME;
+  const region = process.env.AWS_REGION;
+
+  if (!bucketName || !region || !process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    throw new Error('AWS S3 environment variables are not fully configured.');
+  }
+
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: `resumes/${fileName}`,
+    Body: buffer,
+    ContentType: mimeType,
   });
+
+  await s3Client.send(command);
+
+  // Return the public S3 URL
+  return `https://${bucketName}.s3.${region}.amazonaws.com/resumes/${fileName}`;
 }
 
 // ─── POST /career-application ─────────────────────────────────────────────────
@@ -75,12 +80,15 @@ router.post('/career-application', upload.single('resume'), async (req, res) => 
       return res.status(400).json({ error: 'fullName, email, and jobTitle are required.' });
     }
 
-    // ── Upload resume to Cloudinary ──────────────────────────────
-    let resumeLink = req.body.resumeLink || 'No resume uploaded';
+    // ── Upload resume to AWS S3 ──────────────────────────────────
+    let resumeLink = 'No resume uploaded';
 
     if (req.file) {
-      const safeName = `${fullName.replace(/\s+/g, '_')}_${Date.now()}`;
-      resumeLink = await uploadToCloudinary(req.file.buffer, safeName);
+      const ext = path.extname(req.file.originalname) || '.pdf';
+      const safeName = `${fullName.replace(/\s+/g, '_')}_${Date.now()}${ext}`;
+      resumeLink = await uploadToS3(req.file.buffer, safeName, req.file.mimetype);
+    } else if (req.body.resumeLink) {
+      resumeLink = req.body.resumeLink;
     }
 
     // ── Save row to Google Sheet ─────────────────────────────────
@@ -101,7 +109,7 @@ router.post('/career-application', upload.single('resume'), async (req, res) => 
       linkedIn          || '',
       yearsOfExperience || '',
       expectedCTC       || '',
-      resumeLink,                // Cloudinary URL — clickable in Sheets
+      resumeLink,                // S3 URL — clickable in Sheets
     ]);
 
     await CareerApplication.create({
