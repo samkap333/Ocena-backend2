@@ -1,6 +1,15 @@
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 const { Employee } = require('../models/crm');
 const emailService = require('../services/email.service');
+
+function signEmployeeToken(employee) {
+  return jwt.sign(
+    { id: employee._id, email: employee.email, role: employee.role, tenantId: employee.tenantId },
+    process.env.JWT_SECRET || 'ocena-local-dev-jwt-secret',
+    { expiresIn: '15d' }
+  );
+}
 
 // Get all employees for the admin's tenant
 exports.list = async (req, res, next) => {
@@ -113,9 +122,13 @@ exports.activate = async (req, res, next) => {
 
     await employee.save();
     
+    const token = signEmployeeToken(employee);
+
     res.json({ 
       message: 'Account activated successfully!', 
+      token,
       employee: {
+        id: employee._id,
         name: employee.name,
         email: employee.email,
         role: employee.role,
@@ -156,9 +169,13 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
+    const token = signEmployeeToken(employee);
+
     res.json({
       message: 'Login successful',
+      token,
       employee: {
+        id: employee._id,
         name: employee.name,
         email: employee.email,
         role: employee.role,
@@ -303,3 +320,91 @@ exports.resetPassword = async (req, res, next) => {
     next(error);
   }
 };
+
+// Get logged-in employee self profile
+exports.getProfile = async (req, res, next) => {
+  try {
+    res.json(req.employee);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Self update profile (employee portal)
+exports.updateProfile = async (req, res, next) => {
+  try {
+    const allowedUpdates = [
+      'phone', 'address', 'emergencyContactName', 'emergencyContactPhone',
+      'bankName', 'accountNumber', 'ifscCode', 'branchName', 'upiId', 'panNumber'
+    ];
+    
+    const updates = {};
+    for (const key of allowedUpdates) {
+      if (req.body[key] !== undefined) {
+        updates[key] = req.body[key];
+      }
+    }
+
+    const employee = await Employee.findByIdAndUpdate(
+      req.employee._id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    res.json({
+      message: 'Profile updated successfully!',
+      employee
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Send invitation email to employee
+exports.sendInvite = async (req, res, next) => {
+  try {
+    const { email, inviteUrl } = req.body;
+    if (!email || !inviteUrl) {
+      return res.status(400).json({ message: 'Email and inviteUrl are required.' });
+    }
+
+    const employee = await Employee.findOne({ email: email.toLowerCase(), tenantId: req.user.tenantId });
+    if (!employee) {
+      return res.status(404).json({ message: 'Employee not found.' });
+    }
+
+    try {
+      await emailService.sendEmail({
+        to: employee.email,
+        subject: 'Invitation to Join Employee Portal - Ocena Smart Solutions',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+            <h2 style="color: #3b82f6; text-align: center;">Welcome to Ocena Smart Solutions</h2>
+            <p>Dear ${employee.name},</p>
+            <p>You have been onboarded as a <strong>${employee.role}</strong> in the <strong>${employee.department || 'Staff'}</strong> department.</p>
+            <p>To register your account, view your salary details, payslips, and manage your attendance, please click the button below to activate your account:</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${inviteUrl}" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; font-weight: bold; text-decoration: none; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5);">
+                Activate Employee Account
+              </a>
+            </div>
+            <p style="color: #64748b; font-size: 13px;">If you have trouble clicking the button, copy and paste the link below into your web browser:</p>
+            <p style="color: #3b82f6; font-size: 12px; word-break: break-all;">${inviteUrl}</p>
+            <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+            <p style="font-size: 12px; color: #94a3b8; text-align: center;">OCENA Smart Solutions</p>
+          </div>
+        `
+      });
+      res.json({ message: 'Invitation email sent successfully!' });
+    } catch (mailErr) {
+      console.warn('⚠️ Mail delivery failed, falling back: ', mailErr.message);
+      res.status(500).json({ 
+        message: 'Could not send invitation email. Please copy the link instead.',
+        error: mailErr.message
+      });
+    }
+  } catch (error) {
+    next(error);
+  }
+};
+

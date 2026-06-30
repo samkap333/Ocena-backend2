@@ -19,7 +19,7 @@ function signAccessToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, tenantId: user.tenantId },
     getJwtSecret('JWT_SECRET', 'ocena-local-dev-jwt-secret'),
-    { expiresIn: '15m' }
+    { expiresIn: '15d' }
   );
 }
 
@@ -27,7 +27,7 @@ function signRefreshToken(user) {
   return jwt.sign(
     { id: user.id, tenantId: user.tenantId },
     getJwtSecret('REFRESH_TOKEN_SECRET', 'ocena-local-dev-refresh-secret'),
-    { expiresIn: '7d' }
+    { expiresIn: '30d' }
   );
 }
 
