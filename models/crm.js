@@ -284,6 +284,7 @@ const employeeSchema = new Schema({
   panNumber: { type: String },
   paymentMode: { type: String, default: 'Bank Transfer' },
   upiId: { type: String },
+  googleChatUserId: { type: String },
   resetOtp: { type: String },
   resetOtpExpires: { type: Date },
   pendingInvite: { type: Boolean, default: true },

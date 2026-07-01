@@ -120,8 +120,17 @@ exports.deleteHoliday = async (req, res, next) => {
 // Helper to get normalized date (midnight)
 const getNormalizedDate = (d = new Date()) => {
   const date = new Date(d);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parseInt(parts.find(p => p.type === 'year').value, 10);
+  const month = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
+  const day = parseInt(parts.find(p => p.type === 'day').value, 10);
+  return new Date(Date.UTC(year, month, day));
 };
 
 exports.clockIn = async (req, res, next) => {

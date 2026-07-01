@@ -67,8 +67,17 @@ async function getChatClient() {
 
 const getNormalizedDate = (d) => {
   const date = new Date(d);
-  date.setHours(0, 0, 0, 0);
-  return date;
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parseInt(parts.find(p => p.type === 'year').value, 10);
+  const month = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
+  const day = parseInt(parts.find(p => p.type === 'day').value, 10);
+  return new Date(Date.UTC(year, month, day));
 };
 
 /**
@@ -108,10 +117,7 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     }
     console.log(`[Google Chat Sync] Successfully mapped ${memberMap.size} space members.`);
   } catch (membersErr) {
-    console.error('Google Chat memberships API error:', membersErr);
-    const friendlyError = new Error(`Failed to read members of Chat Space. Please ensure you have added the scope "https://www.googleapis.com/auth/chat.memberships.readonly" in the OAuth Playground and re-authorized your account.`);
-    friendlyError.status = 400;
-    throw friendlyError;
+    console.warn('[Google Chat Sync] Google Chat memberships API failed (insufficient scopes or permissions). Sync will fall back to using message sender details directly:', membersErr.message);
   }
 
   try {
@@ -160,14 +166,12 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     console.log(`[Google Chat Sync] Processing message: "${message.text}" from "${displayName}" (${email}) at ${createTime.toISOString()}`);
     console.log(`[Google Chat Sync] Raw sender object: ${JSON.stringify(sender)}`);
 
-    if (!email && !displayName) {
-      console.log('[Google Chat Sync] Skipping message with no email or display name.');
-      continue;
-    }
-
-    // Find employee by email or name
+    // Find employee by googleChatUserId first (most reliable when scopes are missing)
     let employee = null;
-    if (email) {
+    if (sender.name) {
+      employee = await Employee.findOne({ googleChatUserId: sender.name, tenantId });
+    }
+    if (!employee && email) {
       employee = await Employee.findOne({ email: email.toLowerCase(), tenantId });
     }
     if (!employee && displayName) {
@@ -175,7 +179,7 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     }
 
     if (!employee) {
-      console.warn(`[Google Chat Sync] No employee found matching sender: "${displayName}" (${email})`);
+      console.warn(`[Google Chat Sync] No employee found matching sender: ID "${sender.name}", Name "${displayName}", Email "${email}"`);
       continue;
     }
 
@@ -184,18 +188,51 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     const employeeId = employee._id;
     const today = getNormalizedDate(createTime);
 
-    // Identify message intent
-    const isClockIn = /^(login|in|clock in|clock-in|present|check in|check-in|signing in)$/.test(text) || text.includes('login') || text.includes('clock in');
-    const isClockOut = /^(logout|out|clock out|clock-out|done|check out|check-out|signing out|leaving)$/.test(text) || text.includes('logout') || text.includes('clock out') || text.includes('leaving');
+    const cleanedText = text.replace(/[^a-z0-9\s():-]/g, '').trim();
+
+    // Check Clock In
+    const isClockIn = 
+      /^(in|login|present|check\s*in|check-in|signin|signing\s*in|clock\s*in|clock-in)\b/.test(cleanedText) ||
+      cleanedText.startsWith('in ') ||
+      cleanedText.startsWith('in:') ||
+      cleanedText === 'in';
+
+    // Check Clock Out
+    const isClockOut = 
+      /^(out|logout|check\s*out|check-out|done|signout|signing\s*out|clock\s*out|clock-out|leaving)\b/.test(cleanedText) ||
+      cleanedText.startsWith('out ') ||
+      cleanedText.startsWith('out:') ||
+      cleanedText === 'out';
 
     console.log(`[Google Chat Sync] Intent matches - isClockIn: ${isClockIn}, isClockOut: ${isClockOut}`);
+
+    // Parse custom time from text if present (e.g. "In 9:20", "Out :7:18")
+    let eventTime = createTime;
+    const timeMatch = text.match(/\b(\d{1,2})[:.](\d{2})\b/);
+    if (timeMatch) {
+      const parsedHour = parseInt(timeMatch[1], 10);
+      const parsedMinute = parseInt(timeMatch[2], 10);
+      let hour = parsedHour;
+      
+      // Smart AM/PM deduction:
+      if (isClockOut && hour < 12 && createTime.getHours() >= 12) {
+        hour += 12; // Standard shift clock-out is in PM
+      } else if (isClockIn && hour < 6) {
+        hour += 12; // Clock in at night? Unlikely, but if < 6 maybe PM.
+      }
+      
+      const potentialTime = new Date(createTime);
+      potentialTime.setHours(hour, parsedMinute, 0, 0);
+      eventTime = potentialTime;
+      console.log(`[Google Chat Sync] Parsed custom time "${parsedHour}:${parsedMinute}" -> Resolved as: ${eventTime.toISOString()}`);
+    }
 
     if (isClockIn) {
       let attendance = await Attendance.findOne({ employeeId, date: today });
       if (!attendance) {
         // Determine status (Weekend, Holiday, or Present)
         let status = 'Present';
-        const dayOfWeek = createTime.getDay();
+        const dayOfWeek = eventTime.getDay();
         if (dayOfWeek === 0 || dayOfWeek === 6) {
           status = 'Weekend';
         }
@@ -207,22 +244,22 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
         attendance = new Attendance({
           employeeId,
           date: today,
-          clockIn: createTime,
+          clockIn: eventTime,
           status,
           tenantId,
           notes: 'Synced from Google Chat Space'
         });
         await attendance.save();
         syncCount++;
-        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-In', time: createTime });
+        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-In', time: eventTime });
       }
     } else if (isClockOut) {
       const attendance = await Attendance.findOne({ employeeId, date: today });
       if (attendance && attendance.clockIn && !attendance.clockOut) {
-        attendance.clockOut = createTime;
+        attendance.clockOut = eventTime;
         
         // Calculate working hours
-        let totalMs = createTime - attendance.clockIn;
+        let totalMs = eventTime - attendance.clockIn;
         let breakMs = 0;
         if (attendance.breaks && attendance.breaks.length > 0) {
           attendance.breaks.forEach(b => {
@@ -236,7 +273,7 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
         attendance.totalWorkingHours = Math.max(0, workingMs / (1000 * 60 * 60));
         await attendance.save();
         syncCount++;
-        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-Out', time: createTime });
+        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-Out', time: eventTime });
       }
     }
   }
