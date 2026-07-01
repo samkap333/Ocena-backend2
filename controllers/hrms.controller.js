@@ -1,4 +1,4 @@
-const { Employee } = require('../models/crm');
+const { Employee, Tenant } = require('../models/crm');
 const { 
   Shift, 
   Attendance, 
@@ -304,11 +304,27 @@ exports.syncGoogleChatAttendance = async (req, res, next) => {
     const tenantId = req.user.tenantId;
 
     const result = await googleChatService.syncAttendanceFromChat(spaceId, tenantId);
+
+    // Persist Google Chat Space ID under Tenant settings
+    await Tenant.findByIdAndUpdate(tenantId, {
+      $set: { 'settings.googleChatSpaceId': spaceId }
+    });
+
     res.json({
       message: `Google Chat attendance sync completed. Synced ${result.syncCount} actions successfully!`,
       syncCount: result.syncCount,
       logs: result.logs
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getGoogleChatSpaceId = async (req, res, next) => {
+  try {
+    const tenantId = req.user.tenantId;
+    const tenant = await Tenant.findById(tenantId);
+    res.json({ spaceId: tenant?.settings?.googleChatSpaceId || '' });
   } catch (error) {
     next(error);
   }

@@ -65,6 +65,7 @@ router.delete('/holidays/:id', adminAuth, hrmsController.deleteHoliday);
 router.get('/attendance', adminAuth, hrmsController.getAttendanceList);
 router.post('/attendance/manual', adminAuth, hrmsController.manualAttendance);
 router.post('/attendance/sync-google-chat', adminAuth, hrmsController.syncGoogleChatAttendance);
+router.get('/attendance/google-chat-space', adminAuth, hrmsController.getGoogleChatSpaceId);
 
 // Leave Requests Admin Actions
 router.get('/leaves', adminAuth, hrmsController.listLeaves);
