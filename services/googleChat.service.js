@@ -56,7 +56,8 @@ async function getChatClient() {
     credentials,
     scopes: [
       'https://www.googleapis.com/auth/chat.spaces.readonly',
-      'https://www.googleapis.com/auth/chat.messages.readonly'
+      'https://www.googleapis.com/auth/chat.messages.readonly',
+      'https://www.googleapis.com/auth/chat.memberships.readonly'
     ],
   });
 
@@ -87,6 +88,32 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
   console.log(`Syncing Google Chat space: ${parentSpaceId} for tenant: ${tenantId}`);
   
   let response;
+  const memberMap = new Map();
+  try {
+    // 1. Fetch memberships to build a map of user ID -> email/name
+    console.log(`[Google Chat Sync] Fetching members for space: ${parentSpaceId}`);
+    const membersResponse = await chat.spaces.members.list({
+      parent: parentSpaceId,
+      pageSize: 100,
+    });
+    const memberships = membersResponse.data.memberships || [];
+    for (const membership of memberships) {
+      const u = membership.member || {};
+      if (u.name) {
+        memberMap.set(u.name, {
+          displayName: u.displayName || '',
+          email: u.email || '',
+        });
+      }
+    }
+    console.log(`[Google Chat Sync] Successfully mapped ${memberMap.size} space members.`);
+  } catch (membersErr) {
+    console.error('Google Chat memberships API error:', membersErr);
+    const friendlyError = new Error(`Failed to read members of Chat Space. Please ensure you have added the scope "https://www.googleapis.com/auth/chat.memberships.readonly" in the OAuth Playground and re-authorized your account.`);
+    friendlyError.status = 400;
+    throw friendlyError;
+  }
+
   try {
     // List messages from Google Chat space (fetches last 100 messages)
     response = await chat.spaces.messages.list({
@@ -95,7 +122,7 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     });
   } catch (err) {
     console.error('Google Chat API error details:', err);
-    const friendlyError = new Error(`Failed to list messages from Google Chat Space (${parentSpaceId}). Please ensure the space exists, the service account is added to the space, and the Space ID is correct.`);
+    const friendlyError = new Error(`Failed to list messages from Google Chat Space (${parentSpaceId}). Please ensure the space exists, the service account/OAuth user is added to the space, and the Space ID is correct.`);
     friendlyError.status = 400; // Return 400 Bad Request instead of raw 404
     throw friendlyError;
   }
@@ -103,6 +130,8 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
   const messages = response.data.messages || [];
   let syncCount = 0;
   const logs = [];
+
+  console.log(`[Google Chat Sync] Total messages fetched: ${messages.length}`);
 
   // Sort messages chronologically so that clock-in is processed before clock-out
   messages.sort((a, b) => new Date(a.createTime) - new Date(b.createTime));
@@ -113,12 +142,28 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     const sender = message.sender || {};
     
     // Skip bot messages
-    if (sender.type === 'BOT') continue;
+    if (sender.type === 'BOT') {
+      console.log(`[Google Chat Sync] Skipping bot message: "${text}"`);
+      continue;
+    }
 
-    const email = sender.email || '';
-    const displayName = sender.displayName || '';
+    let email = sender.email || '';
+    let displayName = sender.displayName || '';
 
-    if (!email && !displayName) continue;
+    // If sender email/displayName are missing, look them up from the memberships map
+    if ((!email || !displayName) && sender.name && memberMap.has(sender.name)) {
+      const mapped = memberMap.get(sender.name);
+      email = mapped.email;
+      displayName = mapped.displayName;
+    }
+
+    console.log(`[Google Chat Sync] Processing message: "${message.text}" from "${displayName}" (${email}) at ${createTime.toISOString()}`);
+    console.log(`[Google Chat Sync] Raw sender object: ${JSON.stringify(sender)}`);
+
+    if (!email && !displayName) {
+      console.log('[Google Chat Sync] Skipping message with no email or display name.');
+      continue;
+    }
 
     // Find employee by email or name
     let employee = null;
@@ -130,9 +175,11 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     }
 
     if (!employee) {
-      console.warn(`No employee found matching sender: ${displayName} (${email})`);
+      console.warn(`[Google Chat Sync] No employee found matching sender: "${displayName}" (${email})`);
       continue;
     }
+
+    console.log(`[Google Chat Sync] Matched employee: ${employee.name} (${employee.email})`);
 
     const employeeId = employee._id;
     const today = getNormalizedDate(createTime);
@@ -140,6 +187,8 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     // Identify message intent
     const isClockIn = /^(login|in|clock in|clock-in|present|check in|check-in|signing in)$/.test(text) || text.includes('login') || text.includes('clock in');
     const isClockOut = /^(logout|out|clock out|clock-out|done|check out|check-out|signing out|leaving)$/.test(text) || text.includes('logout') || text.includes('clock out') || text.includes('leaving');
+
+    console.log(`[Google Chat Sync] Intent matches - isClockIn: ${isClockIn}, isClockOut: ${isClockOut}`);
 
     if (isClockIn) {
       let attendance = await Attendance.findOne({ employeeId, date: today });
