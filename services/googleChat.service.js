@@ -78,13 +78,27 @@ const getNormalizedDate = (d) => {
 exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
   const chat = await getChatClient();
   
-  console.log(`Syncing Google Chat space: ${spaceId} for tenant: ${tenantId}`);
+  // Google Chat Space ID must be prefixed with "spaces/"
+  let parentSpaceId = spaceId.trim();
+  if (!parentSpaceId.startsWith('spaces/')) {
+    parentSpaceId = `spaces/${parentSpaceId}`;
+  }
+
+  console.log(`Syncing Google Chat space: ${parentSpaceId} for tenant: ${tenantId}`);
   
-  // List messages from Google Chat space (fetches last 100 messages)
-  const response = await chat.spaces.messages.list({
-    parent: spaceId,
-    pageSize: 100,
-  });
+  let response;
+  try {
+    // List messages from Google Chat space (fetches last 100 messages)
+    response = await chat.spaces.messages.list({
+      parent: parentSpaceId,
+      pageSize: 100,
+    });
+  } catch (err) {
+    console.error('Google Chat API error details:', err);
+    const friendlyError = new Error(`Failed to list messages from Google Chat Space (${parentSpaceId}). Please ensure the space exists, the service account is added to the space, and the Space ID is correct.`);
+    friendlyError.status = 400; // Return 400 Bad Request instead of raw 404
+    throw friendlyError;
+  }
 
   const messages = response.data.messages || [];
   let syncCount = 0;
