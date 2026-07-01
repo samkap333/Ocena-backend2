@@ -73,98 +73,26 @@ function generatePayslipPdf(employee, payroll) {
          .font('Helvetica-Bold').text('Payment Mode:', 300, detailsY + 45)
          .font('Helvetica').text(employee.paymentMode || 'Bank Transfer', 390, detailsY + 45);
 
-      // 3. Earnings & Deductions Table Headers
-      const tableY = 245;
-      doc.rect(50, tableY, 240, 20).fill(primaryColor);
-      doc.rect(305, tableY, 240, 20).fill(accentColor);
-
-      doc.fillColor('#ffffff')
-         .font('Helvetica-Bold')
-         .fontSize(10)
-         .text('EARNINGS', 60, tableY + 5)
-         .text('AMOUNT (INR)', 190, tableY + 5, { align: 'right', width: 90 })
-         .text('DEDUCTIONS', 315, tableY + 5)
-         .text('AMOUNT (INR)', 445, tableY + 5, { align: 'right', width: 90 });
-
-      doc.fillColor('#000000');
-
-      // Table Rows
-      const rowHeight = 20;
-      let currentY = tableY + 20;
-
-      const earnings = [
-        { label: 'Basic Salary', val: payroll.basicSalary },
-        { label: 'House Rent Allowance (HRA)', val: payroll.hra },
-        { label: 'Special Allowances', val: payroll.allowances },
-        { label: 'Performance Bonus', val: payroll.bonus },
-        { label: 'Overtime Pay', val: payroll.overtimeEarnings }
-      ];
-
-      const deductions = [
-        { label: 'Provident Fund (PF)', val: payroll.pfDeduction },
-        { label: 'Employee State Insurance (ESI)', val: payroll.esiDeduction },
-        { label: 'Professional Tax (PT)', val: payroll.ptDeduction },
-        { label: 'Income Tax (TDS)', val: payroll.tdsDeduction },
-        { label: 'Loan EMI / Other Deductions', val: payroll.loanEmiDeduction + payroll.otherDeductions }
-      ];
-
-      // Draw rows
-      for (let i = 0; i < 5; i++) {
-        // Alternating background
-        if (i % 2 === 0) {
-          doc.rect(50, currentY, 240, rowHeight).fill(lightBg);
-          doc.rect(305, currentY, 240, rowHeight).fill(lightBg);
-        }
-
-        doc.fillColor('#000000')
-           .font('Helvetica')
-           .fontSize(9)
-           .text(earnings[i].label, 60, currentY + 6)
-           .text(earnings[i].val.toLocaleString('en-IN'), 190, currentY + 6, { align: 'right', width: 90 })
-           .text(deductions[i].label, 315, currentY + 6)
-           .text(deductions[i].val.toLocaleString('en-IN'), 445, currentY + 6, { align: 'right', width: 90 });
-
-        currentY += rowHeight;
-      }
-
-      // Draw borders around tables
-      doc.rect(50, tableY, 240, 120).strokeColor(borderColor).stroke();
-      doc.rect(305, tableY, 240, 120).strokeColor(borderColor).stroke();
-
-      // Total earnings and deductions
-      const totalEarned = payroll.basicSalary + payroll.hra + payroll.allowances + payroll.bonus + payroll.overtimeEarnings;
-      const totalDeducted = payroll.pfDeduction + payroll.esiDeduction + payroll.ptDeduction + payroll.tdsDeduction + payroll.loanEmiDeduction + payroll.otherDeductions;
-
-      doc.rect(50, currentY, 240, 22).fill('#f1f5f9');
-      doc.rect(305, currentY, 240, 22).fill('#f1f5f9');
-      doc.fillColor('#000000')
-         .font('Helvetica-Bold')
-         .fontSize(9)
-         .text('Total Earnings (A)', 60, currentY + 7)
-         .text('INR ' + totalEarned.toLocaleString('en-IN'), 190, currentY + 7, { align: 'right', width: 90 })
-         .text('Total Deductions (B)', 315, currentY + 7)
-         .text('INR ' + totalDeducted.toLocaleString('en-IN'), 445, currentY + 7, { align: 'right', width: 90 });
-
-      // 4. Net Salary Block
-      const netY = currentY + 35;
-      doc.rect(50, netY, 495, 45).fill('#eff6ff').strokeColor('#bfdbfe').stroke();
+      // 3. Net Salary Block (Premium Card)
+      const netY = 245;
+      doc.rect(50, netY, 495, 80).fill('#eff6ff').strokeColor('#bfdbfe').stroke();
       
       doc.fillColor('#1e40af')
-         .fontSize(12)
+         .fontSize(14)
          .font('Helvetica-Bold')
-         .text('NET SALARY PAYABLE (A - B):', 70, netY + 15);
+         .text('NET SALARY PAYABLE:', 75, netY + 30);
 
-      doc.fontSize(16)
-         .text('INR ' + payroll.netSalary.toLocaleString('en-IN'), 350, netY + 13, { align: 'right', width: 170 });
+      doc.fontSize(22)
+         .text('INR ' + payroll.netSalary.toLocaleString('en-IN'), 300, netY + 26, { align: 'right', width: 220 });
 
       // Amount in words
       doc.fillColor(secondaryColor)
-         .fontSize(8.5)
+         .fontSize(9.5)
          .font('Helvetica-Oblique')
-         .text('Amount in words: ' + numberToWords(payroll.netSalary) + ' Only', 50, netY + 55);
+         .text('Amount in words: ' + numberToWords(payroll.netSalary) + ' Only', 50, netY + 95);
 
-      // 5. Verification & Signature Block
-      const sigY = netY + 85;
+      // 4. Verification & Signature Block
+      const sigY = netY + 135;
       
       // Draw Placeholder QR Code (for visual premium feel)
       doc.rect(50, sigY, 70, 70).fillColor('#f1f5f9').strokeColor(borderColor).stroke();

@@ -529,11 +529,11 @@ exports.generatePayroll = async (req, res, next) => {
       const bonus = 0;
       const overtime = 0;
 
-      // Deductions
-      const pf = emp.salary > 15000 ? 1800 : Math.round(basic * 0.12);
-      const esi = baseSalary <= 21000 ? Math.round(baseSalary * 0.0075) : 0;
-      const pt = baseSalary > 20000 ? 200 : 0;
-      const tds = Math.round(baseSalary * 0.05); // Simple 5% tax placeholder
+      // Deductions: Admin requested no automatic deductions (salary is paid in full)
+      const pf = 0;
+      const esi = 0;
+      const pt = 0;
+      const tds = 0;
 
       const gross = basic + hra + allowances + bonus + overtime;
       const net = gross - (pf + esi + pt + tds);
