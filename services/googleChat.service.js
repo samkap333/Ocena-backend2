@@ -204,7 +204,16 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
       cleanedText.startsWith('out:') ||
       cleanedText === 'out';
 
-    console.log(`[Google Chat Sync] Intent matches - isClockIn: ${isClockIn}, isClockOut: ${isClockOut}`);
+    // Check Break Start
+    const isBreakStart = 
+      /^(break|tea\s*break|lunch\s*break|snack\s*break)\b/.test(cleanedText) && 
+      !/^(break\s*over|break\s*end|break\s*off|break\s*done|break\s*stop|break\s*finish)/.test(cleanedText);
+
+    // Check Break End
+    const isBreakEnd = 
+      /^(break\s*over|break\s*end|break\s*off|break\s*done|break\s*stop|break\s*finish|over\b)/.test(cleanedText);
+
+    console.log(`[Google Chat Sync] Intent matches - isClockIn: ${isClockIn}, isClockOut: ${isClockOut}, isBreakStart: ${isBreakStart}, isBreakEnd: ${isBreakEnd}`);
 
     // Parse custom time from text if present (e.g. "In 9:20", "Out :7:18")
     let eventTime = createTime;
@@ -212,18 +221,30 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
     if (timeMatch) {
       const parsedHour = parseInt(timeMatch[1], 10);
       const parsedMinute = parseInt(timeMatch[2], 10);
-      let hour = parsedHour;
       
-      // Smart AM/PM deduction:
-      if (isClockOut && hour < 12 && createTime.getHours() >= 12) {
-        hour += 12; // Standard shift clock-out is in PM
-      } else if (isClockIn && hour < 6) {
-        hour += 12; // Clock in at night? Unlikely, but if < 6 maybe PM.
-      }
+      // Helper to construct Date in Asia/Kolkata timezone
+      const getISTDateWithTime = (refTime, hour, minute) => {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'Asia/Kolkata',
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric'
+        });
+        const parts = formatter.formatToParts(refTime);
+        const y = parseInt(parts.find(p => p.type === 'year').value, 10);
+        const m = parseInt(parts.find(p => p.type === 'month').value, 10) - 1;
+        const d = parseInt(parts.find(p => p.type === 'day').value, 10);
+        
+        // Construct UTC time for that hour/minute
+        const utcMs = Date.UTC(y, m, d, hour, minute, 0, 0);
+        // IST is UTC + 5:30, so UTC = IST - 5:30 (19,800,000 ms)
+        return new Date(utcMs - 19800000);
+      };
       
-      const potentialTime = new Date(createTime);
-      potentialTime.setHours(hour, parsedMinute, 0, 0);
-      eventTime = potentialTime;
+      const candidate1 = getISTDateWithTime(createTime, parsedHour, parsedMinute);
+      const candidate2 = getISTDateWithTime(createTime, (parsedHour + 12) % 24, parsedMinute);
+      
+      eventTime = Math.abs(candidate1 - createTime) < Math.abs(candidate2 - createTime) ? candidate1 : candidate2;
       console.log(`[Google Chat Sync] Parsed custom time "${parsedHour}:${parsedMinute}" -> Resolved as: ${eventTime.toISOString()}`);
     }
 
@@ -251,7 +272,7 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
         });
         await attendance.save();
         syncCount++;
-        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-In', time: eventTime });
+        logs.push({ employeeName: employee.name, date: today.toLocaleDateString('en-IN'), action: 'Clock-In', time: eventTime });
       }
     } else if (isClockOut) {
       const attendance = await Attendance.findOne({ employeeId, date: today });
@@ -273,7 +294,45 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
         attendance.totalWorkingHours = Math.max(0, workingMs / (1000 * 60 * 60));
         await attendance.save();
         syncCount++;
-        logs.push({ employeeName: employee.name, date: today.toLocaleDateString(), action: 'Clock-Out', time: eventTime });
+        logs.push({ employeeName: employee.name, date: today.toLocaleDateString('en-IN'), action: 'Clock-Out', time: eventTime });
+      }
+    } else if (isBreakStart) {
+      const attendance = await Attendance.findOne({ employeeId, date: today });
+      if (attendance && attendance.clockIn && !attendance.clockOut) {
+        if (!attendance.breaks) {
+          attendance.breaks = [];
+        }
+        const activeBreak = attendance.breaks.find(b => !b.end);
+        if (!activeBreak) {
+          attendance.breaks.push({ start: eventTime });
+          await attendance.save();
+          syncCount++;
+          logs.push({ employeeName: employee.name, date: today.toLocaleDateString('en-IN'), action: 'Break-Start', time: eventTime });
+        }
+      }
+    } else if (isBreakEnd) {
+      const attendance = await Attendance.findOne({ employeeId, date: today });
+      if (attendance && attendance.clockIn && !attendance.clockOut && attendance.breaks) {
+        const activeBreak = attendance.breaks.find(b => !b.end);
+        if (activeBreak) {
+          activeBreak.end = eventTime;
+          
+          if (attendance.clockOut) {
+            let totalMs = attendance.clockOut - attendance.clockIn;
+            let breakMs = 0;
+            attendance.breaks.forEach(b => {
+              if (b.start && b.end) {
+                breakMs += (b.end - b.start);
+              }
+            });
+            const workingMs = totalMs - breakMs;
+            attendance.totalWorkingHours = Math.max(0, workingMs / (1000 * 60 * 60));
+          }
+          
+          await attendance.save();
+          syncCount++;
+          logs.push({ employeeName: employee.name, date: today.toLocaleDateString('en-IN'), action: 'Break-End', time: eventTime });
+        }
       }
     }
   }
