@@ -283,6 +283,7 @@ const employeeSchema = new Schema({
   branchName: { type: String },
   panNumber: { type: String },
   paymentMode: { type: String, default: 'Bank Transfer' },
+  paymentType: { type: String, enum: ['Paid', 'Unpaid'], default: 'Paid' },
   upiId: { type: String },
   googleChatUserId: { type: String },
   resetOtp: { type: String },

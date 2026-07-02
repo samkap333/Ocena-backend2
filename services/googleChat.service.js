@@ -121,10 +121,11 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
   }
 
   try {
-    // List messages from Google Chat space (fetches last 100 messages)
+    // List messages from Google Chat space (fetches messages on or after 1 July 2026)
     response = await chat.spaces.messages.list({
       parent: parentSpaceId,
       pageSize: 100,
+      filter: 'createTime > "2026-06-30T18:30:00Z"'
     });
   } catch (err) {
     console.error('Google Chat API error details:', err);
@@ -145,6 +146,13 @@ exports.syncAttendanceFromChat = async (spaceId, tenantId) => {
   for (const message of messages) {
     const text = (message.text || '').toLowerCase().trim();
     const createTime = new Date(message.createTime);
+
+    // Only process messages on or after 1 July 2026 (IST)
+    const filterDate = new Date('2026-07-01T00:00:00+05:30');
+    if (createTime < filterDate) {
+      continue;
+    }
+
     const sender = message.sender || {};
     
     // Skip bot messages

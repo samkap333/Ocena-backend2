@@ -38,7 +38,12 @@ router.get('/documents/hr-policy', employeeAuth, hrmsController.getHrPolicy);
 router.post('/documents/upload-policy', employeeAuth, upload.single('policyFile'), hrmsController.uploadHrPolicy);
 
 // Payslip Download (for employees)
+router.get('/payroll/my-payroll', employeeAuth, hrmsController.getMyPayrollList);
 router.get('/payroll/:id/payslip/employee', employeeAuth, hrmsController.downloadPayslip);
+
+// Notifications (for employees)
+router.get('/notifications/my-notifications', employeeAuth, hrmsController.getMyNotifications);
+router.post('/notifications/:id/read', employeeAuth, hrmsController.markNotificationAsRead);
 
 
 // ==========================================

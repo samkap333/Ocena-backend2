@@ -638,11 +638,18 @@ exports.updatePayrollStatus = async (req, res, next) => {
     await pay.save();
 
     // Create Notification for employee
-    if (status === 'Paid' || status === 'Processed') {
+    if (status === 'Paid') {
       await HrmsNotification.create({
         employeeId: pay.employeeId,
         type: 'Payroll',
-        message: `Your payslip for ${pay.month} is generated. Net salary: ₹${pay.netSalary.toLocaleString('en-IN')}`,
+        message: `Your salary for ${pay.month} has been released and paid! Net salary: ₹${pay.netSalary.toLocaleString('en-IN')}`,
+        tenantId: req.user.tenantId
+      });
+    } else if (status === 'Processed') {
+      await HrmsNotification.create({
+        employeeId: pay.employeeId,
+        type: 'Payroll',
+        message: `Your payslip for ${pay.month} is processed. Net salary: ₹${pay.netSalary.toLocaleString('en-IN')}`,
         tenantId: req.user.tenantId
       });
     }
@@ -857,6 +864,47 @@ exports.getEmployeeDashboardStats = async (req, res, next) => {
       leaveBalance: leaveBalance || { casual: { allocated: 12, used: 0 }, sick: { allocated: 10, used: 0 } },
       recentPayslips
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getMyPayrollList = async (req, res, next) => {
+  try {
+    const employeeId = req.employee._id;
+    const list = await Payroll.find({
+      employeeId,
+      status: { $in: ['Paid', 'Processed'] }
+    }).sort({ month: -1 });
+    res.json(list);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getMyNotifications = async (req, res, next) => {
+  try {
+    const employeeId = req.employee._id;
+    const notifications = await HrmsNotification.find({ employeeId })
+      .sort({ createdAt: -1 })
+      .limit(50);
+    res.json(notifications);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.markNotificationAsRead = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const employeeId = req.employee._id;
+    const notification = await HrmsNotification.findOneAndUpdate(
+      { _id: id, employeeId },
+      { $set: { read: true } },
+      { new: true }
+    );
+    if (!notification) return res.status(404).json({ message: 'Notification not found' });
+    res.json(notification);
   } catch (error) {
     next(error);
   }

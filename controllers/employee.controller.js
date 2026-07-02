@@ -24,7 +24,7 @@ exports.list = async (req, res, next) => {
 // Create a new employee invite (pending activation)
 exports.create = async (req, res, next) => {
   try {
-    const { name, email, role, department, salary, employeeId, joiningDate, bankName, accountNumber, ifscCode, branchName, paymentMode, upiId, googleChatUserId } = req.body;
+    const { name, email, role, department, salary, employeeId, joiningDate, bankName, accountNumber, ifscCode, branchName, paymentMode, paymentType, upiId, googleChatUserId } = req.body;
     
     // Check for existing employee
     const existing = await Employee.findOne({ email: email.toLowerCase() });
@@ -51,6 +51,7 @@ exports.create = async (req, res, next) => {
       ifscCode,
       branchName,
       paymentMode: paymentMode || 'Bank Transfer',
+      paymentType: paymentType || 'Paid',
       upiId,
       googleChatUserId,
       pendingInvite: true,
