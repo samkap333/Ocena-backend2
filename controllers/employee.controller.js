@@ -14,7 +14,11 @@ function signEmployeeToken(employee) {
 // Get all employees for the admin's tenant
 exports.list = async (req, res, next) => {
   try {
-    const employees = await Employee.find({ tenantId: req.user.tenantId }).sort({ createdAt: -1 });
+    const adminEmails = ['business@ocena.in', 'ocenasmartsolutions@gmail.com', 'hr@ocena.in'];
+    const employees = await Employee.find({ 
+      tenantId: req.user.tenantId,
+      email: { $nin: adminEmails }
+    }).sort({ createdAt: -1 });
     res.json(employees);
   } catch (error) {
     next(error);

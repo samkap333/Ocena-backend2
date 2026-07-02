@@ -538,7 +538,12 @@ exports.generatePayroll = async (req, res, next) => {
     const tenantId = req.user.tenantId;
 
     // Get all employees for the tenant
-    const employees = await Employee.find({ tenantId, status: 'Active' });
+    const adminEmails = ['business@ocena.in', 'ocenasmartsolutions@gmail.com', 'hr@ocena.in'];
+    const employees = await Employee.find({ 
+      tenantId, 
+      status: 'Active',
+      email: { $nin: adminEmails }
+    });
     const generated = [];
 
     for (const emp of employees) {
