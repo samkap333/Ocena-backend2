@@ -1,17 +1,124 @@
 const geoip = require('geoip-lite');
 const { AnalyticsSession, AnalyticsPageView } = require('../models/analytics');
 
-// Helper to extract client IP
+const ISO_COUNTRY_NAMES = {
+  IN: 'India',
+  US: 'United States',
+  GB: 'United Kingdom',
+  CA: 'Canada',
+  AU: 'Australia',
+  DE: 'Germany',
+  FR: 'France',
+  AE: 'United Arab Emirates',
+  SG: 'Singapore',
+  SA: 'Saudi Arabia',
+  NL: 'Netherlands',
+  JP: 'Japan',
+  KR: 'South Korea',
+  BR: 'Brazil',
+  ZA: 'South Africa',
+  NZ: 'New Zealand',
+  IT: 'Italy',
+  ES: 'Spain',
+  SE: 'Sweden',
+  CH: 'Switzerland',
+  PL: 'Poland',
+  IE: 'Ireland',
+  NO: 'Norway',
+  DK: 'Denmark',
+  FI: 'Finland',
+  MY: 'Malaysia',
+  ID: 'Indonesia',
+  PH: 'Philippines',
+  TH: 'Thailand',
+  VN: 'Vietnam',
+  PK: 'Pakistan',
+  BD: 'Bangladesh',
+  NP: 'Nepal',
+  LK: 'Sri Lanka',
+  QA: 'Qatar',
+  KW: 'Kuwait',
+  OM: 'Oman',
+  BH: 'Bahrain',
+  TR: 'Turkey',
+  EG: 'Egypt',
+  NG: 'Nigeria',
+  KE: 'Kenya',
+  GH: 'Ghana',
+  MX: 'Mexico',
+  AR: 'Argentina',
+  CO: 'Colombia',
+  CL: 'Chile',
+  PE: 'Peru',
+  RU: 'Russia',
+  UA: 'Ukraine',
+  CN: 'China',
+  HK: 'Hong Kong',
+  TW: 'Taiwan',
+  AT: 'Austria',
+  BE: 'Belgium',
+  PT: 'Portugal',
+  GR: 'Greece',
+  CZ: 'Czech Republic',
+  RO: 'Romania',
+  HU: 'Hungary',
+  IL: 'Israel',
+};
+
+function isPrivateIp(ip) {
+  if (!ip) return true;
+  return (
+    ip === '::1' ||
+    ip === '127.0.0.1' ||
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    ip.startsWith('172.16.') ||
+    ip.startsWith('172.17.') ||
+    ip.startsWith('172.18.') ||
+    ip.startsWith('172.19.') ||
+    ip.startsWith('172.20.') ||
+    ip.startsWith('172.21.') ||
+    ip.startsWith('172.22.') ||
+    ip.startsWith('172.23.') ||
+    ip.startsWith('172.24.') ||
+    ip.startsWith('172.25.') ||
+    ip.startsWith('172.26.') ||
+    ip.startsWith('172.27.') ||
+    ip.startsWith('172.28.') ||
+    ip.startsWith('172.29.') ||
+    ip.startsWith('172.30.') ||
+    ip.startsWith('172.31.') ||
+    ip.startsWith('fc00:') ||
+    ip.startsWith('fe80:')
+  );
+}
+
+// Helper to extract real client IP
 function getClientIp(req) {
+  // 1. Cloudflare real client IP
+  if (req.headers['cf-connecting-ip']) {
+    return req.headers['cf-connecting-ip'].trim();
+  }
+  // 2. True-Client-IP header
+  if (req.headers['true-client-ip']) {
+    return req.headers['true-client-ip'].trim();
+  }
+  // 3. X-Real-IP header
+  if (req.headers['x-real-ip']) {
+    return req.headers['x-real-ip'].trim();
+  }
+  // 4. X-Forwarded-For header (comma-separated list, first public IP is client)
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) {
-    const list = forwarded.split(',');
-    return list[0].trim();
+    const ips = forwarded.split(',').map((ip) => ip.trim()).filter(Boolean);
+    for (const ip of ips) {
+      if (!isPrivateIp(ip)) {
+        return ip;
+      }
+    }
+    return ips[0] || '';
   }
-  return req.headers['cf-connecting-ip'] || 
-         req.headers['x-real-ip'] || 
-         req.socket.remoteAddress || 
-         '';
+  return req.socket?.remoteAddress || '';
 }
 
 // Helper to parse User-Agent
@@ -98,27 +205,29 @@ function parseTrafficSource(referrer = '', utm = {}) {
 
 // Helper to determine geo location
 function parseLocation(ip, req) {
-  // Cloudflare header override if available
+  // 1. Cloudflare header override if available
   const cfCountry = req.headers['cf-ipcountry'];
   const cfCity = req.headers['cf-ipcity'];
   const cfRegion = req.headers['cf-region'];
 
   if (cfCountry && cfCountry.length === 2 && cfCountry !== 'XX') {
+    const code = cfCountry.toUpperCase();
     return {
-      country: cfCountry,
-      countryCode: cfCountry,
+      country: ISO_COUNTRY_NAMES[code] || code,
+      countryCode: code,
       city: cfCity ? decodeURIComponent(cfCity) : 'Unknown',
       region: cfRegion ? decodeURIComponent(cfRegion) : 'Unknown',
     };
   }
 
-  // GeoIP Lookup
-  if (ip && ip !== '::1' && ip !== '127.0.0.1' && !ip.startsWith('192.168.') && !ip.startsWith('10.')) {
+  // 2. GeoIP Lookup from Real IP
+  if (ip && !isPrivateIp(ip)) {
     const geo = geoip.lookup(ip);
-    if (geo) {
+    if (geo && geo.country) {
+      const code = geo.country.toUpperCase();
       return {
-        country: geo.country || 'Unknown',
-        countryCode: geo.country || 'UN',
+        country: ISO_COUNTRY_NAMES[code] || code,
+        countryCode: code,
         city: geo.city || 'Unknown',
         region: geo.region || 'Unknown',
       };
@@ -132,6 +241,7 @@ function parseLocation(ip, req) {
     region: 'Maharashtra',
   };
 }
+
 
 // Public Ingest Endpoint (receives pageviews, heartbeats, duration pings)
 exports.collect = async (req, res) => {
