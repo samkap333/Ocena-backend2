@@ -28,6 +28,7 @@ const quotesRoutes = require('./routes/quotes.routes');
 const submissionsRoutes = require('./routes/submissions.routes');
 const employeeRoutes = require('./routes/employee.routes');
 const hrmsRoutes = require('./routes/hrms.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
 
 // Import middleware
 const middleware = require('./middleware');
@@ -79,6 +80,7 @@ server.use('/api/v1/quotes', authMiddleware, tenantMiddleware, quotesRoutes);
 server.use('/api/v1/submissions', authMiddleware, submissionsRoutes);
 server.use('/api/v1/employees', employeeRoutes);
 server.use('/api/v1/hrms', hrmsRoutes);
+server.use('/api/v1/analytics', analyticsRoutes);
 
 server.use(errorHandler);
 
